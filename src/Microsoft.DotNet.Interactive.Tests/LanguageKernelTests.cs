@@ -1109,6 +1109,7 @@ Console.Write(2);
                 .Contain(i => i.DisplayText == expectedCompletion);
         }
 
+/*
         [Theory]
         [InlineData(Language.CSharp)]
         [InlineData(Language.FSharp)]
@@ -1264,5 +1265,6 @@ Console.Write(2);
             succeeded.Should().BeTrue();
             x.Should().Be("hello");
         }
+*/
     }
 }

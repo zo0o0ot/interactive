@@ -14,14 +14,15 @@
     <PackageVersion Condition="'$(SqlToolsVersion)' != ''">$(SqlToolsVersion)</PackageVersion>
     <PackageVersion Condition="'$(PackageVersion)' == ''">3.0.0-release.52</PackageVersion>
     <PackageLicenseExpression></PackageLicenseExpression>
-    <PackageLicenseFile>license/license.txt</PackageLicenseFile>
+    <PackageLicenseFile>license/Licence.txt</PackageLicenseFile>
     <PackageIcon>images/sqlserver.png</PackageIcon>
     <PackageIconFullPath></PackageIconFullPath>
   </PropertyGroup>
 
   <ItemGroup>
     <Compile Include="Class1.cs" />
-    <None Include="../../artifacts/downloads/license.txt" Pack="true" PackagePath="license/"/>
+    <None Include="$(MSBuildThisFileDirectory)Licence.txt" Pack="true" PackagePath="license/"/>
+    <None Include="$(MSBuildThisFileDirectory)NOTICE.txt" Pack="true" PackagePath="license/"/>
     <None Include="../../artifacts/downloads/sqlserver.png" Pack="true" PackagePath="images/"/>
   </ItemGroup>
 

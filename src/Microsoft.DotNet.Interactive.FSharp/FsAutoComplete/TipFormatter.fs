@@ -458,16 +458,6 @@ module private Format =
             // In markdown a new paragraph is define by using 2 empty lines
             |> String.concat "\n\n*or*\n\n"
 
-    /// <summary>Remove all invalid 'or' block found</summary>
-    /// <remarks>
-    /// If an 'or' block is found between 2 elements then we remove it as we can't generate a valid markdown for it
-    ///
-    /// For example, <td> Some text -or- another text </td> cannot be converted into a multine string
-    /// and so we prefer to remove the 'or' block instead of having some weird markdown artefacts
-    ///
-    /// For now, we only consider text between <td></td> to be invalid
-    /// We can add more in the future if needed, but I want to keep this as minimal as possible to avoid capturing false positive
-    /// /<remarks>
     let private removeInvalidOrBlock (text : string) =
         let invalidOrBlockPattern = """<td(\s+[^>])*>(?'or_text'(?:(?!<td)[\s\S])*-or-(?:(?!<\/td)[\s\S])*)<\/td(\s+[^>])*>"""
 

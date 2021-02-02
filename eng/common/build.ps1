@@ -34,6 +34,8 @@ Param(
 if($env:Platform) {
   $env:Platform=""  
 }
+. $PSScriptRoot\tools.ps1
+
 function Print-Usage() {
   Write-Host "Common settings:"
   Write-Host "  -configuration <value>  Build configuration: 'Debug' or 'Release' (short: -c)"

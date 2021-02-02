@@ -20,6 +20,10 @@ namespace Microsoft.DotNet.Interactive.ExtensionLab.Tests
         public MsSqlConnectionTests(ITestOutputHelper output)
         {
             _output = output;
+            // FIX: (MsSqlConnectionTests) 
+            Environment.SetEnvironmentVariable(
+                MsSqlServiceClient.SqlToolsServiceEnvironmentVariableName,
+                @"C:\temp\Microsoft.SqlToolsService-win-x64-netcoreapp3.1\MicrosoftSqlToolsServiceLayer.exe");
         }
 
         private async Task<CompositeKernel> CreateKernel()

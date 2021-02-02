@@ -12,6 +12,7 @@
     <IncludeBuildOutput>true</IncludeBuildOutput>
     <NoWarn>$(NoWarn);NU5100;VSTHRD002</NoWarn><!-- dll outside of lib/ folder -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RestoreAdditionalProjectSources Condition="Exists('$(MSBuildThisFileDirectory)../../artifacts/packages/Release/Shipping')">$(RestoreAdditionalProjectSources);$(MSBuildThisFileDirectory)../../artifacts/packages/Release/Shipping</RestoreAdditionalProjectSources>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -49,15 +50,13 @@
    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="3.1.8" />
    <PackageReference Include="StreamJsonRpc" Version="2.6.121" />
    <PackageReference Include="Microsoft.Data.Sqlite" Version="3.1.8" />
- </ItemGroup>
-
- <ItemGroup>
    <PackageReference Include="Iced" Version="1.8.0" />
    <PackageReference Include="ICSharpCode.Decompiler" Version="7.0.0.6225-preview1" />
    <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="$(MicrosoftCodeAnalysisCommonVersion)" />
    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="$(MicrosoftCodeAnalysisCommonVersion)" />
    <PackageReference Include="Microsoft.Diagnostics.Runtime" Version="1.1.132302" />
    <PackageReference Include="System.Runtime.InteropServices" Version="4.3.0" />
+   <PackageReference Include="Microsoft.SqlToolsService" Version="3.0.0-release.52" />
  </ItemGroup>
 
   <ItemGroup>

@@ -56,7 +56,7 @@
    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="$(MicrosoftCodeAnalysisCommonVersion)" />
    <PackageReference Include="Microsoft.Diagnostics.Runtime" Version="1.1.132302" />
    <PackageReference Include="System.Runtime.InteropServices" Version="4.3.0" />
-   <PackageReference Include="Microsoft.SqlToolsService" Version="3.0.0-release.53" />
+   <PackageReference Include="Microsoft.SqlToolsService" Version="3.0.0-release.52" />
  </ItemGroup>
 
   <ItemGroup>

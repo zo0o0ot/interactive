@@ -13,7 +13,7 @@
     <PackageDescription>.NET client for SQL Tools Service</PackageDescription>
     <PackageReleaseNotes></PackageReleaseNotes>
     <PackageVersion Condition="'$(SqlToolsVersion)' != ''">$(SqlToolsVersion)</PackageVersion>
-    <PackageVersion Condition="'$(PackageVersion)' == ''">3.0.0-release.52</PackageVersion>
+    <PackageVersion Condition="'$(PackageVersion)' == ''">3.0.0-release.53</PackageVersion>
     <PackageLicenseExpression></PackageLicenseExpression>
     <PackageLicenseFile>license/Licence.txt</PackageLicenseFile>
     <PackageIcon>images/sqlserver.png</PackageIcon>

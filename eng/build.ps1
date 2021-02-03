@@ -15,7 +15,7 @@ function doWork ([string] $ci){
     try {
         if ($ci -eq "-ci") {
 
-            $sqlVersion="3.0.0-release.52"
+            $sqlVersion="3.0.0-release.53"
             $downloads=(Join-Path $PSScriptRoot "..\artifacts\downloads")
 
             . (Join-Path $PSScriptRoot "DownLoadSqlToolsService.ps1") Release -out $downloads -version "$sqlVersion"

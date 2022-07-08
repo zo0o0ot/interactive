@@ -101,7 +101,7 @@ namespace Microsoft.DotNet.Interactive.Tests
         [Fact]
         public async Task Loads_native_dependencies_from_nugets()
         {
-            using var kernel = CreateKernel(Language.CSharp);
+            using var kernel = CreateKernel();
 
             using var events = kernel.KernelEvents.ToSubscribedList();
 
@@ -504,8 +504,8 @@ Formatter.Register<DataFrame>((df, writer) =>
 
             await kernel.SubmitCodeAsync(@"
 #!time
-#r ""nuget:Microsoft.ML.AutoML,0.16.0-preview""
-#r ""nuget:Microsoft.ML.AutoML,0.16.1-preview""
+#r ""nuget:Microsoft.ML.AutoML, 0.19.0""
+#r ""nuget:Microsoft.ML.AutoML, 0.19.1""
 ");
 
             await kernel.SubmitCodeAsync(code);
@@ -515,7 +515,7 @@ Formatter.Register<DataFrame>((df, writer) =>
                   .Which
                   .Message
                   .Should()
-                  .Be("Microsoft.ML.AutoML version 0.16.1-preview cannot be added because version 0.16.0-preview was added previously.");
+                  .Be("Microsoft.ML.AutoML version 0.19.1 cannot be added because version 0.19.0 was added previously.");
 
         }
 
@@ -531,14 +531,14 @@ Formatter.Register<DataFrame>((df, writer) =>
             await kernel.SubmitCodeAsync(
                 @"
 #!time
-#r ""nuget:Microsoft.ML.AutoML,0.16.0-preview""
+#r ""nuget:Microsoft.ML.AutoML, 0.19.0""
 ");
             events.Should().NotContainErrors();
 
             await kernel.SubmitCodeAsync(
                 @"
 #!time
-#r ""nuget:Microsoft.ML.AutoML,0.16.1-preview""
+#r ""nuget:Microsoft.ML.AutoML, 0.19.1""
 ");
 
             await kernel.SubmitCodeAsync(code);
@@ -548,7 +548,7 @@ Formatter.Register<DataFrame>((df, writer) =>
                   .Which
                   .Message
                   .Should()
-                  .Be("Microsoft.ML.AutoML version 0.16.1-preview cannot be added because version 0.16.0-preview was added previously.");
+                  .Be("Microsoft.ML.AutoML version 0.19.1 cannot be added because version 0.19.0 was added previously.");
         }
 
         [Theory]
@@ -567,7 +567,6 @@ Formatter.Register<DataFrame>((df, writer) =>
                         .UseDefaultFormatting()
                         .UseKernelHelpers()
                         .UseWho()
-                        .UseDefaultNamespaces()
                         .LogEventsToPocketLogger();
 
             using var kernel =
@@ -582,8 +581,8 @@ Formatter.Register<DataFrame>((df, writer) =>
 
             var events = kernel.KernelEvents.ToSubscribedList();
 
-            var command = new SubmitCode(@"#r ""nuget:Octokit, 0.32.0""
-#r ""nuget:NodaTime, 2.4.6""
+            var command = new SubmitCode(@"#r ""nuget:Octokit, 0.50.0""
+#r ""nuget:NodaTime, 3.1.0""
 
 using Octokit;
 using NodaTime;
@@ -609,9 +608,9 @@ using NodaTime.Extensions;");
 
             await kernel.SubmitCodeAsync(@"
 #!time
-#r ""nuget: Microsoft.ML, 1.4.0""
-#r ""nuget:Microsoft.ML.AutoML,0.16.0""
-#r ""nuget:Microsoft.Data.Analysis,0.1.0""
+#r ""nuget:Microsoft.ML, 1.7.1""
+#r ""nuget:Microsoft.ML.AutoML, 0.19.1""
+#r ""nuget:Microsoft.Data.Analysis, 0.19.1""
 ");
             events.Should().NotContainErrors();
 
@@ -625,7 +624,7 @@ using NodaTime.Extensions;");
                   .Which
                   .Message
                   .Should()
-                  .Be("Google.Protobuf version 3.10.1 cannot be added because version 3.10.0 was added previously.");
+                  .Be("Google.Protobuf version 3.10.1 cannot be added because version 3.19.4 was added previously.");
         }
 
         [Theory]
@@ -639,15 +638,15 @@ using NodaTime.Extensions;");
 
             await kernel.SubmitCodeAsync(@"
 #!time
-#r ""nuget: Microsoft.ML, 1.4.0""
-#r ""nuget:Microsoft.ML.AutoML,0.16.0""
-#r ""nuget:Microsoft.Data.Analysis,0.1.0""
+#r ""nuget:Microsoft.ML, 1.7.1""
+#r ""nuget:Microsoft.ML.AutoML, 0.19.1""
+#r ""nuget:Microsoft.Data.Analysis, 0.19.1""
 ");
             events.Should().NotContainErrors();
 
             await kernel.SubmitCodeAsync(@"
 #!time
-#r ""nuget: Google.Protobuf, 3.10.0""
+#r ""nuget: Google.Protobuf, 3.19.4""
 ");
             events.Should().NotContainErrors();
         }
@@ -662,7 +661,7 @@ using NodaTime.Extensions;");
             var events = kernel.KernelEvents.ToSubscribedList();
 
             await kernel.SubmitCodeAsync(@"
-#r ""nuget:System.Text.Json, 4.6.0""
+#r ""nuget:System.Text.Json, 6.0.0""
 ");
 
             await kernel.SubmitCodeAsync(code);
@@ -682,7 +681,7 @@ using NodaTime.Extensions;");
             var events = kernel.KernelEvents.ToSubscribedList();
 
             await kernel.SubmitCodeAsync(@"
-#r ""nuget:Microsoft.DotNet.PlatformAbstractions""
+#r ""nuget:System.Text.Json""
 ");
             // It should work, no errors and the latest requested package should be added
             events.Should()
@@ -690,8 +689,8 @@ using NodaTime.Extensions;");
 
             events.OfType<PackageAdded>()
                   .Should()
-                  .ContainSingle(e => e.PackageReference.PackageName == "Microsoft.DotNet.PlatformAbstractions" &&
-                                      e.PackageReference.PackageVersion != "1.0.3");
+                  .ContainSingle(e => e.PackageReference.PackageName == "System.Text.Json" &&
+                                      e.PackageReference.PackageVersion != "5.0.2");
         }
 
         [Theory]

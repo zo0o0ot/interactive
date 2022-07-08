@@ -2,9 +2,8 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 import * as contracts from "./contracts";
-import { Kernel } from "./kernel";
+import { IKernelCommandInvocation, Kernel } from "./kernel";
 import { KernelHost } from "./kernelHost";
-import { KernelInfo } from "./contracts";
 
 export class CompositeKernel extends Kernel {
 
@@ -12,6 +11,7 @@ export class CompositeKernel extends Kernel {
     private _host: KernelHost | null = null;
     private readonly _namesTokernelMap: Map<string, Kernel> = new Map();
     private readonly _kernelToNamesMap: Map<Kernel, Set<string>> = new Map();
+    private readonly _defaultKernelNamesByCommandType: Map<contracts.KernelCommandType, string> = new Map();
 
     defaultKernelName: string | undefined;
 
@@ -20,7 +20,7 @@ export class CompositeKernel extends Kernel {
     }
 
     get childKernels() {
-        return Array.from(this._namesTokernelMap.values());
+        return [...this._kernelToNamesMap.keys()];
     }
 
     get host(): KernelHost | null {
@@ -32,7 +32,7 @@ export class CompositeKernel extends Kernel {
         if (this._host) {
             this._host.addKernelInfo(this, { localName: this.name.toLowerCase(), aliases: [], supportedDirectives: [], supportedKernelCommands: [] });
 
-            for (let kernel of this._kernelToNamesMap.keys()) {
+            for (let kernel of this.childKernels) {
                 let aliases = [];
                 for (let name of this._kernelToNamesMap.get(kernel)!) {
                     if (name !== kernel.name) {
@@ -44,9 +44,22 @@ export class CompositeKernel extends Kernel {
         }
     }
 
+    protected override async handleRequestKernelInfo(invocation: IKernelCommandInvocation): Promise<void> {
+        for (let kernel of this.childKernels) {
+            if (kernel.supportsCommand(invocation.commandEnvelope.commandType)) {
+                await kernel.handleCommand({ command: {}, commandType: contracts.RequestKernelInfoType });
+            }
+        }
+    }
+
     add(kernel: Kernel, aliases?: string[]) {
         if (!kernel) {
             throw new Error("kernel cannot be null or undefined");
+        }
+
+        if (!this.defaultKernelName) {
+            // default to first kernel
+            this.defaultKernelName = kernel.name;
         }
 
         kernel.parentKernel = this;
@@ -63,30 +76,49 @@ export class CompositeKernel extends Kernel {
                 this._namesTokernelMap.set(alias.toLowerCase(), kernel);
                 kernelNames.add(alias.toLowerCase());
             });
+
+            kernel.kernelInfo.aliases = aliases;
         }
 
         this._kernelToNamesMap.set(kernel, kernelNames);
 
-        let kernelInfo: KernelInfo = {
-            localName: kernel.name,
-            aliases: aliases === undefined ? [] : [...aliases],
-            languageName: "",
-            supportedKernelCommands: [],
-            supportedDirectives: []
-        };
+        this.host?.addKernelInfo(kernel, kernel.kernelInfo);
+    }
 
-        this.host?.addKernelInfo(kernel, kernelInfo);
+    setDefaultTargetKernelNameForCommand(commandType: contracts.KernelCommandType, kernelName: string) {
+        this._defaultKernelNamesByCommandType.set(commandType, kernelName);
     }
 
     findKernelByName(kernelName: string): Kernel | undefined {
+        if (kernelName.toLowerCase() === this.name.toLowerCase()) {
+            return this;
+        }
+
         return this._namesTokernelMap.get(kernelName.toLowerCase());
     }
 
-    handleCommand(commandEnvelope: contracts.KernelCommandEnvelope): Promise<void> {
+    findKernelByUri(uri: string): Kernel | undefined {
+        const kernels = Array.from(this._kernelToNamesMap.keys());
+        for (let kernel of kernels) {
+            if (kernel.kernelInfo.uri === uri) {
+                return kernel;
+            }
+        }
+
+        for (let kernel of kernels) {
+            if (kernel.kernelInfo.remoteUri === uri) {
+                return kernel;
+            }
+        }
+
+        return undefined;
+    }
+
+    override handleCommand(commandEnvelope: contracts.KernelCommandEnvelope): Promise<void> {
 
         let kernel = commandEnvelope.command.targetKernelName === this.name
             ? this
-            : this.getTargetKernel(commandEnvelope.command);
+            : this.getHandlingKernel(commandEnvelope);
 
         if (kernel === this) {
             return super.handleCommand(commandEnvelope);
@@ -97,10 +129,27 @@ export class CompositeKernel extends Kernel {
         return Promise.reject(new Error("Kernel not found: " + commandEnvelope.command.targetKernelName));
     }
 
-    getTargetKernel(command: contracts.KernelCommand): Kernel | undefined {
-        let targetKernelName = command.targetKernelName ?? this.defaultKernelName;
+    override getHandlingKernel(commandEnvelope: contracts.KernelCommandEnvelope): Kernel | undefined {
+        const defaultTargetKernelName = this._defaultKernelNamesByCommandType.get(commandEnvelope.commandType);
+        if (defaultTargetKernelName) {
+            const kernel = this.findKernelByName(defaultTargetKernelName);
+            return kernel;
+        }
 
-        let kernel = targetKernelName === undefined ? this : this.findKernelByName(targetKernelName);
+        if (commandEnvelope.command.destinationUri) {
+            const kernel = this.findKernelByUri(commandEnvelope.command.destinationUri);
+            if (kernel) {
+                return kernel;
+            }
+        }
+        if (!commandEnvelope.command.targetKernelName) {
+            if (super.canHandle(commandEnvelope)) {
+                return this;
+            }
+        }
+
+        const targetKernelName = commandEnvelope.command.targetKernelName ?? this.defaultKernelName ?? this.name;
+        const kernel = this.findKernelByName(targetKernelName);
         return kernel;
     }
 }

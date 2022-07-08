@@ -22,6 +22,7 @@ namespace Microsoft.DotNet.Interactive.SqlServer.Tests
     {
         private async Task<CompositeKernel> CreateKernelAsync()
         {
+            Formatter.SetPreferredMimeTypesFor(typeof(TabularDataResource), HtmlFormatter.MimeType, CsvFormatter.MimeType);
             var csharpKernel = new CSharpKernel().UseNugetDirective().UseValueSharing();
             await csharpKernel.SubmitCodeAsync(@"
 #r ""nuget:microsoft.sqltoolsservice,3.0.0-release.163""
@@ -295,6 +296,11 @@ my_data_result");
                 .Be(2);
         }
 
+        public static readonly IEnumerable<object[]> SharedObjectVariables =
+            new List<object[]>
+            {
+                new object[] { "Guid testVar = Guid.Parse(\"4df65065-2369-4d63-a6b0-20dc7cdd02fe\");", Guid.Parse("4df65065-2369-4d63-a6b0-20dc7cdd02fe") } // GUID
+            };
 
         [MsSqlTheory]
         [InlineData("var testVar = 2;", 2)] // var
@@ -311,6 +317,7 @@ my_data_result");
         [InlineData("int testVar = 123456;", 123456)] // int
         [InlineData("long testVar = 123456789012345;", 123456789012345)] // long
         [InlineData("short testVar = 123;", (short)123)] // short
+        [MemberData(nameof(SharedObjectVariables))]
         public async Task Shared_variable_can_be_used_to_parameterize_a_sql_query(string csharpVariableDeclaration, object expectedValue, Type changeType = null)
         {
             using var kernel = await CreateKernelAsync();
@@ -383,63 +390,7 @@ select @x, @y";
                   .Should()
                   .ContainValues(new object[] { "Hello world!", 123 });
         }
-
-        [MsSqlTheory]
-        [InlineData("string testVar = null;")] // Don't support null vars currently
-        [InlineData("decimal testVar = 123456.789;", true)] // Incorrect type
-        [InlineData("nint testVar = 123456;")] // Unsupported type
-        [InlineData("nuint testVar = 123456;")] // Unsupported type
-        [InlineData("sbyte testVar = 123;")] // Unsupported type
-        [InlineData("uint testVar = 123456;")] // Unsupported type
-        [InlineData("ulong testVar = 123456789012345;")] // Unsupported type
-        [InlineData("ushort testVar = 123;")] // Unsupported type
-        [InlineData("var testVar = new List<int>();")] // Unsupported type
-        public async Task Invalid_shared_variables_are_handled_correctly(string csharpVariableDeclaration, bool isCSharpError = false)
-        {
-            using var kernel = await CreateKernelAsync();
-
-            var result = await kernel.SubmitCodeAsync(
-                             $"#!connect mssql --kernel-name adventureworks \"{MsSqlFactAttribute.GetConnectionStringForTests()}\"");
-
-            result.KernelEvents
-                .ToSubscribedList()
-                .Should()
-                .NotContainErrors();
-
-            var cSharpResult = await kernel.SendAsync(new SubmitCode(csharpVariableDeclaration));
-
-            var cSharpEvents = cSharpResult.KernelEvents.ToSubscribedList();
-            if (isCSharpError)
-            {
-                cSharpEvents
-                    .Should()
-                    .ContainSingle<CommandFailed>();
-            }
-
-            var code = @"
-#!sql-adventureworks
-#!share --from csharp testVar
-select @testVar";
-
-            result = await kernel.SendAsync(new SubmitCode(code));
-
-            var events = result.KernelEvents.ToSubscribedList();
-
-            var assertion = events
-                            .Should()
-                            .ContainSingle<CommandFailed>();
-
-            if (!isCSharpError)
-            {
-                // Errors that occurred in the csharp block will result in this failing, but not with an inner exception
-                assertion
-                    .Which
-                    .Exception
-                    .Should()
-                    .BeOfType<InvalidOperationException>();
-            }
-        }
-
+        
         public void Dispose()
         {
             DataExplorer.ResetToDefault();

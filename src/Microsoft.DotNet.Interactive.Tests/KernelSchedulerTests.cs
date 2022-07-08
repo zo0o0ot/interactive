@@ -113,6 +113,43 @@ namespace Microsoft.DotNet.Interactive.Tests
         }
 
         [Fact]
+        public async Task Deferred_work_in_progress_is_allowed_to_complete_when_the_work_that_triggered_it_is_cancelled()
+        {
+            using var scheduler = new KernelScheduler<int, int>();
+            var cts = new CancellationTokenSource();
+
+            var deferredOperations = new[] { 1, 2, 3 };
+            var completedDeferredOperations = new List<int>();
+
+            scheduler.RegisterDeferredOperationSource(
+                (_, _) => deferredOperations, 
+              async i =>
+              {
+                  if (!cts.IsCancellationRequested)
+                  {
+                      cts.Cancel();
+                  }
+
+                  await Task.Delay(50);
+
+                  completedDeferredOperations.Add(i);
+                  return i;
+              });
+
+            var run = () => scheduler.RunAsync(4, Task.FromResult, cancellationToken: cts.Token);
+
+            await run.Invoking(async r => await r())
+                .Should()
+                .ThrowAsync<OperationCanceledException>();
+
+            await Task.Delay(1000);
+            
+            completedDeferredOperations
+                .Should()
+                .BeEquivalentTo(deferredOperations);
+        }
+
+        [Fact]
         public void disposing_scheduler_prevents_later_scheduled_work_from_executing()
         {
             using var scheduler = new KernelScheduler<int, int>();
@@ -208,7 +245,7 @@ namespace Microsoft.DotNet.Interactive.Tests
 
             work.Invoking(async w => await w)
                 .Should()
-                .Throw<OperationCanceledException>();
+                .ThrowAsync<OperationCanceledException>();
         }
 
         [Fact]
@@ -230,7 +267,7 @@ namespace Microsoft.DotNet.Interactive.Tests
 
             work.Invoking(async w => await w)
                 .Should()
-                .Throw<OperationCanceledException>();
+                .ThrowAsync<OperationCanceledException>();
         }
 
         [Fact]
@@ -293,7 +330,7 @@ namespace Microsoft.DotNet.Interactive.Tests
 
             work.Invoking(async w => await w)
                 .Should()
-                .Throw<DataMisalignedException>();
+                .ThrowAsync<DataMisalignedException>();
         }
 
         [Fact]
@@ -393,7 +430,7 @@ namespace Microsoft.DotNet.Interactive.Tests
 
             var xs = await Task.WhenAll(tasks);
 
-            xs.Should().BeEquivalentTo(0, 1, 2, 3, 4);
+            xs.Should().BeEquivalentTo(new []{0, 1, 2, 3, 4});
         }
 
         [Fact]

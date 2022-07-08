@@ -6,6 +6,8 @@ import { Guid, TokenGenerator } from "./tokenGenerator";
 import * as contracts from "./contracts";
 import { Logger } from "./logger";
 import { CompositeKernel } from "./compositeKernel";
+import { KernelScheduler } from "./kernelScheduler";
+import { PromiseCompletionSource } from "./genericChannel";
 
 export interface IKernelCommandInvocation {
     commandEnvelope: contracts.KernelCommandEnvelope;
@@ -22,16 +24,57 @@ export interface IKernelEventObserver {
 }
 
 export class Kernel {
+    private _kernelInfo: contracts.KernelInfo;
+
     private _commandHandlers = new Map<string, IKernelCommandHandler>();
     private readonly _eventObservers: { [token: string]: contracts.KernelEventEnvelopeObserver } = {};
     private readonly _tokenGenerator: TokenGenerator = new TokenGenerator();
     public rootKernel: Kernel = this;
     public parentKernel: CompositeKernel | null = null;
+    private _scheduler?: KernelScheduler<contracts.KernelCommandEnvelope> | null = null;
 
-    constructor(readonly name: string) {
+    public get kernelInfo(): contracts.KernelInfo {
+        return this._kernelInfo;
+    }
+
+    constructor(readonly name: string, languageName?: string, languageVersion?: string) {
+        this._kernelInfo = {
+            localName: name,
+            languageName: languageName,
+            aliases: [],
+            languageVersion: languageVersion,
+            supportedDirectives: [],
+            supportedKernelCommands: []
+        };
+
+        this.registerCommandHandler({
+            commandType: contracts.RequestKernelInfoType, handle: async invocation => {
+                await this.handleRequestKernelInfo(invocation);
+            }
+        });
+    }
+
+    protected async handleRequestKernelInfo(invocation: IKernelCommandInvocation): Promise<void> {
+        const eventEnvelope: contracts.KernelEventEnvelope = {
+            eventType: contracts.KernelInfoProducedType,
+            command: invocation.commandEnvelope,
+            event: <contracts.KernelInfoProduced>{ kernelInfo: this._kernelInfo }
+        };//?
+
+        invocation.context.publish(eventEnvelope);
+        return Promise.resolve();
+    }
+
+    private getScheduler(): KernelScheduler<contracts.KernelCommandEnvelope> {
+        if (!this._scheduler) {
+            this._scheduler = this.parentKernel?.getScheduler() ?? new KernelScheduler<contracts.KernelCommandEnvelope>();
+        }
+
+        return this._scheduler;
     }
 
     private ensureCommandTokenAndId(commandEnvelope: contracts.KernelCommandEnvelope) {
+        commandEnvelope;//?
         if (!commandEnvelope.token) {
             let nextToken = this._tokenGenerator.GetNewToken();
             if (KernelInvocationContext.current?.commandEnvelope) {
@@ -68,6 +111,12 @@ export class Kernel {
     async send(commandEnvelope: contracts.KernelCommandEnvelope): Promise<void> {
         this.ensureCommandTokenAndId(commandEnvelope);
         let context = KernelInvocationContext.establish(commandEnvelope);
+        this.getScheduler().runAsync(commandEnvelope, (value) => this.executeCommand(value));
+        return context.promise;
+    }
+
+    private async executeCommand(commandEnvelope: contracts.KernelCommandEnvelope): Promise<void> {
+        let context = KernelInvocationContext.establish(commandEnvelope);
         let isRootCommand = areCommandsTheSame(context.commandEnvelope, commandEnvelope);
         let contextEventsSubscription: contracts.Disposable | null = null;
         if (isRootCommand) {
@@ -97,7 +146,7 @@ export class Kernel {
 
     handleCommand(commandEnvelope: contracts.KernelCommandEnvelope): Promise<void> {
         return new Promise<void>(async (resolve, reject) => {
-            let context = KernelInvocationContext.establish(commandEnvelope);
+            let context = KernelInvocationContext.establish(commandEnvelope);//?
             context.handlingKernel = this;
             let isRootCommand = areCommandsTheSame(context.commandEnvelope, commandEnvelope);
 
@@ -142,15 +191,35 @@ export class Kernel {
         };
     }
 
+    protected canHandle(commandEnvelope: contracts.KernelCommandEnvelope) {
+        if (commandEnvelope.command.targetKernelName && commandEnvelope.command.targetKernelName !== this.name) {
+            return false;
+
+        }
+
+        if (commandEnvelope.command.destinationUri) {
+            if (this.kernelInfo.uri !== commandEnvelope.command.destinationUri) {
+                return false;
+            }
+        }
+
+        return this.supportsCommand(commandEnvelope.commandType);
+    }
+
+    supportsCommand(commandType: contracts.KernelCommandType): boolean {
+        return this._commandHandlers.has(commandType);
+    }
+
     registerCommandHandler(handler: IKernelCommandHandler): void {
         // When a registration already existed, we want to overwrite it because we want users to
         // be able to develop handlers iteratively, and it would be unhelpful for handler registration
         // for any particular command to be cumulative.
         this._commandHandlers.set(handler.commandType, handler);
+        this._kernelInfo.supportedKernelCommands = Array.from(this._commandHandlers.keys()).map(commandName => ({ name: commandName }));
     }
 
-    getTargetKernel(command: contracts.KernelCommand): Kernel | undefined {
-        let targetKernelName = command.targetKernelName ?? this.name;
+    getHandlingKernel(commandEnvelope: contracts.KernelCommandEnvelope): Kernel | undefined {
+        let targetKernelName = commandEnvelope.command.targetKernelName ?? this.name;
         return targetKernelName === this.name ? this : undefined;
     }
 
@@ -161,4 +230,47 @@ export class Kernel {
             observer(kernelEvent);
         }
     }
+}
+
+export async function submitCommandAndGetResult<TEvent extends contracts.KernelEvent>(kernel: Kernel, commandEnvelope: contracts.KernelCommandEnvelope, expectedEventType: contracts.KernelEventType): Promise<TEvent> {
+    let completionSource = new PromiseCompletionSource<TEvent>();
+    let handled = false;
+    let disposable = kernel.subscribeToKernelEvents(eventEnvelope => {
+        if (eventEnvelope.command?.token === commandEnvelope.token) {
+            switch (eventEnvelope.eventType) {
+                case contracts.CommandFailedType:
+                    if (!handled) {
+                        handled = true;
+                        let err = <contracts.CommandFailed>eventEnvelope.event;//?
+                        completionSource.reject(err);
+                    }
+                    break;
+                case contracts.CommandSucceededType:
+                    if (areCommandsTheSame(eventEnvelope.command!, commandEnvelope)
+                        && (eventEnvelope.command?.id === commandEnvelope.id)) {
+                        if (!handled) {//? ($ ? eventEnvelope : {})
+                            handled = true;
+                            completionSource.reject('Command was handled before reporting expected result.');
+                        }
+                        break;
+                    }
+                default:
+                    if (eventEnvelope.eventType === expectedEventType) {
+                        handled = true;
+                        let event = <TEvent>eventEnvelope.event;//? ($ ? eventEnvelope : {})
+                        completionSource.resolve(event);
+                    }
+                    break;
+            }
+        }
+    });
+
+    try {
+        await kernel.send(commandEnvelope);
+    }
+    finally {
+        disposable.dispose();
+    }
+
+    return completionSource.promise;
 }

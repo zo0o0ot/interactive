@@ -72,6 +72,7 @@ namespace Microsoft.DotNet.Interactive.SqlServer
                 {
                     string s => $"N{s.AsSingleQuotedString()}",
                     char c => $"N{c.ToString().AsSingleQuotedString()}",
+                    Guid g => $"N{g.ToString().AsSingleQuotedString()}",
                     bool b => b ? "1" : "0",
                     null => "NULL",
                     _ => value.ToString()
@@ -99,7 +100,7 @@ namespace Microsoft.DotNet.Interactive.SqlServer
         protected override void StoreQueryResults(IReadOnlyCollection<TabularDataResource> results, ParseResult commandKernelChooserParseResult)
         {
             var chooser = ChooseKernelDirective;
-            var name = commandKernelChooserParseResult.GetValueForOption(chooser.NameOption);
+            var name = commandKernelChooserParseResult?.GetValueForOption(chooser.NameOption);
             if (!string.IsNullOrWhiteSpace(name))
             {
                 QueryResults[name] = results;

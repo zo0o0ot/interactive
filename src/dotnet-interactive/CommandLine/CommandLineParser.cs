@@ -30,6 +30,7 @@ using Microsoft.DotNet.Interactive.FSharp;
 using Microsoft.DotNet.Interactive.Http;
 using Microsoft.DotNet.Interactive.Jupyter;
 using Microsoft.DotNet.Interactive.Jupyter.Formatting;
+using Microsoft.DotNet.Interactive.Mermaid;
 using Microsoft.DotNet.Interactive.PowerShell;
 using Microsoft.DotNet.Interactive.Telemetry;
 using Microsoft.DotNet.Interactive.VSCode;
@@ -113,11 +114,6 @@ public static class CommandLineParser
         // Setup first time use notice sentinel.
         firstTimeUseNoticeSentinel ??= new FirstTimeUseNoticeSentinel(VersionSensor.Version().AssemblyInformationalVersion);
 
-        var clearTextProperties = new[]
-        {
-            "frontend"
-        };
-
         // Setup telemetry.
         telemetry ??= new Telemetry.Telemetry(
             VersionSensor.Version().AssemblyInformationalVersion,
@@ -126,11 +122,9 @@ public static class CommandLineParser
 
         var filter = new TelemetryFilter(
             Sha256Hasher.HashWithNormalizedCasing,
-            clearTextProperties,
+            new[] { "frontend" },
             (commandResult, directives, entryItems) =>
             {
-                    
-
                 // add frontend
                 var frontendTelemetryAdded = false;
 
@@ -170,12 +164,15 @@ public static class CommandLineParser
                     }
                 }
 
-                if(!frontendTelemetryAdded){
+                if (!frontendTelemetryAdded)
+                {
                     var frontendName = Environment.GetEnvironmentVariable("DOTNET_INTERACTIVE_FRONTEND_NAME");
-                    if(string.IsNullOrWhiteSpace(frontendName)){
+                    if (string.IsNullOrWhiteSpace(frontendName))
+                    {
                         frontendName = "unknown";
                     }
-                    entryItems.Add(new KeyValuePair<string, string>("frontend", frontendName));                    
+
+                    entryItems.Add(new KeyValuePair<string, string>("frontend", frontendName));
                 }
             });
 
@@ -202,7 +199,6 @@ public static class CommandLineParser
         rootCommand.AddCommand(Jupyter());
         rootCommand.AddCommand(StdIO());
         rootCommand.AddCommand(NotebookParser());
-        rootCommand.AddCommand(HttpServer());
 
         return new CommandLineBuilder(rootCommand)
             .UseDefaults()
@@ -279,28 +275,9 @@ public static class CommandLineParser
                 var frontendEnvironment = new HtmlNotebookFrontendEnvironment();
                 var kernel = CreateKernel(options.DefaultKernel, frontendEnvironment, startupOptions);
 
-                kernel.Add(
-                    new JavaScriptKernel(),
-                    new[] { "js" });
+                await new JupyterClientKernelExtension().OnLoadAsync(kernel);
 
                 services.AddKernel(kernel);
-
-                kernel.VisitSubkernels(k =>
-                {
-                    switch (k)
-                    {
-                        case CSharpKernel csharpKernel:
-                            csharpKernel.UseJupyterHelpers();
-                            break;
-                        case FSharpKernel fsharpKernel:
-                            fsharpKernel.UseJupyterHelpers();
-                            break;
-                        case PowerShellKernel powerShellKernel:
-                            powerShellKernel.UseJupyterHelpers();
-                            break;
-                    }
-                });
-
 
                 var clientSideKernelClient = new SignalRBackchannelKernelClient();
 
@@ -323,64 +300,6 @@ public static class CommandLineParser
                 var jupyterInstallCommand = new JupyterInstallCommand(console, new JupyterKernelSpecInstaller(console), httpPortRange, path);
                 return jupyterInstallCommand.InvokeAsync();
             }
-        }
-
-        Command HttpServer()
-        {
-            var httpPortOption = new Option<HttpPort>(
-                "--http-port",
-                description: "Specifies the port on which to enable HTTP services",
-                parseArgument: result =>
-                {
-                    if (result.Tokens.Count == 0)
-                    {
-                        return HttpPort.Auto;
-                    }
-
-                    var source = result.Tokens[0].Value;
-
-                    if (source == "*")
-                    {
-                        return HttpPort.Auto;
-                    }
-
-                    if (!int.TryParse(source, out var portNumber))
-                    {
-                        result.ErrorMessage = "Must specify a port number or *.";
-                        return null;
-                    }
-
-                    return new HttpPort(portNumber);
-                },
-                isDefault: true);
-
-            var httpCommand = new Command("http", "Starts dotnet-interactive with kernel functionality exposed over http")
-            {
-                defaultKernelOption,
-                httpPortOption
-            };
-
-            httpCommand.Handler = CommandHandler.Create<StartupOptions, KernelHttpOptions, IConsole, InvocationContext>(
-                (startupOptions, options, console, context) =>
-                {
-                    var frontendEnvironment = new BrowserFrontendEnvironment();
-                    var kernel = CreateKernel(options.DefaultKernel, frontendEnvironment, startupOptions);
-
-                    kernel.Add(
-                        new JavaScriptKernel(),
-                        new[] { "js" });
-
-                    services.AddKernel(kernel)
-                        .AddSingleton(new SignalRBackchannelKernelClient());
-
-                    onServerStarted ??= () =>
-                    {
-                        console.Out.WriteLine("Application started. Press Ctrl+C to shut down.");
-                    };
-                    return startHttp(startupOptions, console, startServer, context);
-                });
-
-            return httpCommand;
         }
 
         Command StdIO()
@@ -449,21 +368,29 @@ public static class CommandLineParser
                         ? new HtmlNotebookFrontendEnvironment()
                         : new BrowserFrontendEnvironment();
 
-                    var kernel = CreateKernel(options.DefaultKernel, frontendEnvironment, startupOptions);
+                    var kernel = CreateKernel(
+                        options.DefaultKernel, 
+                        frontendEnvironment, 
+                        startupOptions);
 
                     services.AddKernel(kernel);
 
                     kernel = kernel.UseQuitCommand();
 
+                    var sender = KernelCommandAndEventSender.FromTextWriter(
+                        Console.Out,
+                        KernelHost.CreateHostUri("stdio"));
+
+                    var receiver = KernelCommandAndEventReceiver.FromTextReader(Console.In);
+
                     var host = kernel.UseHost(
-                        new KernelCommandAndEventTextStreamSender(
-                            Console.Out,
-                            KernelHost.CreateHostUri("stdio")),
-                        new MultiplexingKernelCommandAndEventReceiver(new KernelCommandAndEventTextReaderReceiver(Console.In)), KernelHost.CreateHostUriForCurrentProcessId());
+                        sender,
+                        receiver,
+                        KernelHost.CreateHostUriForCurrentProcessId());
 
                     if (isVSCode)
                     {
-                        var vscodeSetup = new VSCodeClientKernelsExtension();
+                        var vscodeSetup = new VSCodeClientKernelExtension();
                         await vscodeSetup.OnLoadAsync(kernel);
                     }
                        
@@ -589,7 +516,6 @@ public static class CommandLineParser
                 .UseNugetDirective()
                 .UseKernelHelpers()
                 .UseWho()
-                .UseDefaultNamespaces()
                 .UseMathAndLaTeX()
                 .UseValueSharing(),
             new[] { "f#", "F#" });
@@ -600,13 +526,16 @@ public static class CommandLineParser
                 .UseValueSharing(),
             new[] { "powershell" });
 
-
         compositeKernel.Add(
             new HtmlKernel());
 
         compositeKernel.Add(
             new KeyValueStoreKernel()
                 .UseWho());
+
+
+        compositeKernel.Add(
+            new MermaidKernel());
 
         var kernel = compositeKernel
             .UseDefaultMagicCommands()
@@ -616,6 +545,7 @@ public static class CommandLineParser
         kernel.AddKernelConnector(new ConnectNamedPipeCommand());
         kernel.AddKernelConnector(new ConnectSignalRCommand());
         kernel.AddKernelConnector(new ConnectStdIoCommand());
+
 
         if (startupOptions.Verbose)
         {

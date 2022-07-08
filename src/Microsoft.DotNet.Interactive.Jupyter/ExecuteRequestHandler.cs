@@ -8,7 +8,6 @@ using Microsoft.DotNet.Interactive.Formatting;
 
 using System;
 using System.Collections.Generic;
-using System.CommandLine.Rendering;
 using System.Linq;
 using System.Reactive.Concurrency;
 using System.Text.Json;
@@ -21,14 +20,7 @@ namespace Microsoft.DotNet.Interactive.Jupyter
 {
     public class ExecuteRequestHandler : RequestHandlerBase<ExecuteRequest>
     {
-        private static readonly TextSpanFormatter _textSpanFormatter;
-
         private int _executionCount;
-
-        static ExecuteRequestHandler()
-        {
-            _textSpanFormatter = new TextSpanFormatter();
-        }
 
         public ExecuteRequestHandler(Kernel kernel, IScheduler scheduler = null)
             : base(kernel, scheduler ?? CurrentThreadScheduler.Instance)
@@ -41,8 +33,6 @@ namespace Microsoft.DotNet.Interactive.Jupyter
             string targetKernelName = context.GetLanguage();
 
             _executionCount = executeRequest.Silent ? _executionCount : Interlocked.Increment(ref _executionCount);
-            
-            FrontendEnvironment.AllowStandardInput = executeRequest.AllowStdin;
 
             var executeInputPayload = new ExecuteInput(executeRequest.Code, _executionCount);
             context.JupyterMessageSender.Send(executeInputPayload);
@@ -231,13 +221,9 @@ namespace Microsoft.DotNet.Interactive.Jupyter
         {
             var transient = CreateTransient();
 
-            var span = _textSpanFormatter.ParseToSpan($"{Ansi.Color.Foreground.DarkGray}{logEvent.Message}{Ansi.Text.AttributesOff}");
-
-            var message = span.ToString(OutputMode.Ansi);
-
             var dataMessage = new DisplayData(
                 transient: transient,
-                data: new Dictionary<string, object> { [PlainTextFormatter.MimeType] = message });
+                data: new Dictionary<string, object> { [PlainTextFormatter.MimeType] = logEvent.Message });
 
             var isSilent = ((ExecuteRequest) request.Content).Silent;
 
